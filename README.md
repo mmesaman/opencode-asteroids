@@ -29,6 +29,18 @@ Luego visita `http://localhost:3000`.
 | `←` `→`   | Rotar nave |
 | `↑`       | Propulsar  |
 | `Espacio` | Disparar   |
+| `X`       | Cambiar de nave |
+
+## Naves
+
+Hay dos naves disponibles. Se cambia entre ellas en cualquier momento con la tecla `X` (la elección se conserva al reiniciar la partida).
+
+| Nave      | Tamaño | Color  | Puntos |
+| --------- | ------ | ------ | ------ |
+| Clásica   | 1x     | Blanco | x1     |
+| Morada    | 2x     | Morado | x2     |
+
+La nave morada es el doble de grande que la clásica, pero como es más grande resulta más difícil esquivar los asteroides. A cambio, cada asteroide destruido vale el doble de puntos.
 
 ## Puntuación
 
@@ -43,3 +55,4 @@ Luego visita `http://localhost:3000`.
 - 3 vidas con invencibilidad temporal al reaparecer (parpadeo)
 - Asteroides se parten en fragmentos más pequeños al ser destruidos
 - Partículas de explosión al destruir asteroides
+- Dos naves con distinto tamaño y multiplicador de puntos
