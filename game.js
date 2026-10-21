@@ -118,9 +118,46 @@ class Asteroid {
   }
 }
 
+// ── Naves ─────────────────────────────────────────────────────────────────────
+// Cada nave define su color, su escala (tamaño) y su multiplicador de puntos.
+const SHIPS = [
+  { name: 'ESTÁNDAR', colorName: 'BLANCA', color: '#ffffff', scale: 1, pointsMult: 1 },
+  { name: 'TITÁN',    colorName: 'MORADA', color: '#b16cff', scale: 2, pointsMult: 2 },
+];
+
+// Dibuja la silueta de la nave en coordenadas locales (origen en el centro).
+// Se reutiliza para las vistas previas del menú de selección.
+function drawShipBody(scale, color, thrusting) {
+  ctx.lineJoin    = 'round';
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5 / scale;
+
+  // Silueta clásica: triángulo con muesca trasera
+  ctx.beginPath();
+  ctx.moveTo( 20,  0);   // nariz
+  ctx.lineTo(-12, -9);   // ala izquierda
+  ctx.lineTo( -7,  0);   // muesca trasera
+  ctx.lineTo(-12,  9);   // ala derecha
+  ctx.closePath();
+  ctx.stroke();
+
+  // Llama del propulsor
+  if (thrusting && Math.random() > 0.35) {
+    ctx.beginPath();
+    ctx.moveTo(-8, -4);
+    ctx.lineTo(-8 - rand(6, 14), 0);
+    ctx.lineTo(-8,  4);
+    ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+    ctx.stroke();
+  }
+}
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
-  constructor() { this.reset(); }
+  constructor(type = SHIPS[0]) {
+    this.type = type;
+    this.reset();
+  }
 
   reset() {
     this.x      = W / 2;
@@ -128,12 +165,16 @@ class Ship {
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
+    this.scale  = this.type.scale;
+    this.color  = this.type.color;
+    this.radius = 12 * this.scale;
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.dead          = false;
   }
+
+  get pointsMult() { return this.type.pointsMult; }
 
   update(dt) {
     if (this.dead) return;
@@ -162,7 +203,7 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const NOSE = 21 * this.scale;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
     return [new Bullet(ox, oy, this.angle)];
@@ -176,29 +217,8 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1.5;
-    ctx.lineJoin    = 'round';
-
-    // Silueta clásica: triángulo con muesca trasera
-    ctx.beginPath();
-    ctx.moveTo( 20,  0);   // nariz
-    ctx.lineTo(-12, -9);   // ala izquierda
-    ctx.lineTo( -7,  0);   // muesca trasera
-    ctx.lineTo(-12,  9);   // ala derecha
-    ctx.closePath();
-    ctx.stroke();
-
-    // Llama del propulsor
-    if (this.thrusting && Math.random() > 0.35) {
-      ctx.beginPath();
-      ctx.moveTo(-8, -4);
-      ctx.lineTo(-8 - rand(6, 14), 0);
-      ctx.lineTo(-8,  4);
-      ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
-      ctx.stroke();
-    }
-
+    ctx.scale(this.scale, this.scale);
+    drawShipBody(this.scale, this.color, this.thrusting);
     ctx.restore();
   }
 }
@@ -238,8 +258,9 @@ class Particle {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles;
 let score, lives, level;
-let state;      // 'playing' | 'dead' | 'gameover'
+let state;      // 'menu' | 'playing' | 'dead' | 'gameover'
 let deadTimer;
+let shipIndex;  // nave elegida en el menú
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -254,7 +275,7 @@ function spawnAsteroids(count) {
 }
 
 function initGame() {
-  ship          = new Ship();
+  ship          = new Ship(SHIPS[shipIndex]);
   bullets   = [];
   asteroids = [];
   particles = [];
@@ -263,6 +284,17 @@ function initGame() {
   level  = 1;
   state  = 'playing';
   spawnAsteroids(4);
+}
+
+function openMenu() {
+  ship          = new Ship(SHIPS[shipIndex]);
+  bullets   = [];
+  asteroids = [];
+  particles = [];
+  score  = 0;
+  lives  = 3;
+  level  = 1;
+  state  = 'menu';
 }
 
 function nextLevel() {
@@ -289,10 +321,28 @@ function killShip() {
   }
 }
 
+// ── Menú de selección de nave ────────────────────────────────────────────────
+function handleMenuInput() {
+  const left  = pressed('ArrowLeft')  || pressed('KeyA');
+  const right = pressed('ArrowRight') || pressed('KeyD');
+  if (left)  shipIndex = wrap(shipIndex - 1, SHIPS.length);
+  if (right) shipIndex = wrap(shipIndex + 1, SHIPS.length);
+  if (pressed('Digit1')) shipIndex = 0;
+  if (pressed('Digit2')) shipIndex = 1;
+  const start = pressed('Space') || pressed('Enter');
+  if (start) initGame();
+}
+
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  if (state === 'menu') {
+    handleMenuInput();
+    return;
+  }
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
+    if (pressed('KeyM')) openMenu();
     particles.forEach(p => p.update(dt));
     particles = particles.filter(p => !p.dead);
     return;
@@ -327,7 +377,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * ship.pointsMult;
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
       }
@@ -351,12 +401,13 @@ function update(dt) {
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
-function drawLifeIcon(x, y) {
+function drawLifeIcon(x, y, scale, color) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth   = 1.2;
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.2 / scale;
   ctx.lineJoin    = 'round';
   ctx.beginPath();
   ctx.moveTo( 9,  0);
@@ -375,12 +426,85 @@ function drawHUD() {
   ctx.textAlign = 'left';
   ctx.fillText(`SCORE  ${score}`, 14, 26);
 
+  ctx.font = '13px monospace';
+  ctx.fillStyle = ship.color;
+  ctx.fillText(`NAVE  ${ship.type.name}`, 14, 47);
+  if (ship.pointsMult > 1) {
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText(`PUNTOS x${ship.pointsMult}`, 14, 65);
+  }
+
   ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font = '15px monospace';
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
 
   for (let i = 0; i < lives; i++)
-    drawLifeIcon(W - 16 - i * 22, 18);
+    drawLifeIcon(W - 16 - i * 22, 18, 0.45 * ship.scale, ship.color);
 
+}
+
+function drawShipPreview(type, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-Math.PI / 2);
+  ctx.scale(type.scale, type.scale);
+  drawShipBody(type.scale, type.color, false);
+  ctx.restore();
+}
+
+function drawMenu() {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font      = 'bold 40px monospace';
+  ctx.fillText('ASTEROIDS', W / 2, 88);
+
+  ctx.font      = '16px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('ELIGE TU NAVE', W / 2, 126);
+
+  const CARD_W = 250, CARD_H = 230, GAP = 40, TOP = 170;
+  const totalW = SHIPS.length * CARD_W + (SHIPS.length - 1) * GAP;
+  const startX = (W - totalW) / 2;
+
+  SHIPS.forEach((type, i) => {
+    const x   = startX + i * (CARD_W + GAP);
+    const cx  = x + CARD_W / 2;
+    const sel = i === shipIndex;
+
+    ctx.fillStyle = sel ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)';
+    ctx.fillRect(x, TOP, CARD_W, CARD_H);
+
+    ctx.strokeStyle = sel ? type.color : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth   = sel ? 2 : 1;
+    ctx.strokeRect(x + 0.5, TOP + 0.5, CARD_W - 1, CARD_H - 1);
+
+    if (sel) {
+      ctx.fillStyle = type.color;
+      ctx.font      = '16px monospace';
+      ctx.fillText('▼', cx, TOP - 10);
+    }
+
+    drawShipPreview(type, cx, TOP + 85);
+
+    ctx.font      = 'bold 20px monospace';
+    ctx.fillStyle = type.color;
+    ctx.fillText(type.name, cx, TOP + 145);
+
+    ctx.font      = '13px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(`NAVE ${type.colorName}`, cx, TOP + 167);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(`TAMAÑO x${type.scale}   PUNTOS x${type.pointsMult}`, cx, TOP + 195);
+  });
+
+  ctx.font      = '15px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText('← →  ELEGIR NAVE        ESPACIO  EMPEZAR', W / 2, TOP + CARD_H + 44);
+  ctx.font      = '13px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText('1 / 2  SELECCIÓN RÁPIDA', W / 2, TOP + CARD_H + 68);
 }
 
 function drawOverlay(title, sub) {
@@ -397,6 +521,11 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
+  if (state === 'menu') {
+    drawMenu();
+    return;
+  }
+
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
   bullets.forEach(b => b.draw());
@@ -405,7 +534,7 @@ function draw() {
   drawHUD();
 
   if (state === 'gameover')
-    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`);
+    drawOverlay('GAME OVER', `PUNTAJE: ${score}  —  ESPACIO: REINICIAR  —  M: CAMBIAR NAVE`);
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────────
@@ -419,5 +548,6 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-initGame();
+shipIndex = 0;
+openMenu();
 requestAnimationFrame(loop);
