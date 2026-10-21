@@ -23,6 +23,14 @@ function pressed(code) {
   return val;
 }
 
+// Consume la pulsación de cualquiera de las teclas indicadas.
+function pressedAny(codes) {
+  for (const code of codes) {
+    if (pressed(code)) return true;
+  }
+  return false;
+}
+
 // ── Utils ─────────────────────────────────────────────────────────────────────
 const wrap  = (v, max) => ((v % max) + max) % max;
 const dist  = (a, b)   => Math.hypot(a.x - b.x, a.y - b.y);
@@ -31,14 +39,14 @@ const randInt = (min, max) => Math.floor(rand(min, max + 1));
 
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
-  constructor(x, y, angle) {
+  constructor(x, y, angle, escala = 1) {
     this.x = x;
     this.y = y;
     const SPEED = 520;
     this.vx = Math.cos(angle) * SPEED;
     this.vy = Math.sin(angle) * SPEED;
     this.ttl  = 1.1;
-    this.radius = 2;
+    this.radius = 2 * escala;
     this.dead = false;
   }
 
@@ -118,9 +126,33 @@ class Asteroid {
   }
 }
 
+// ── Naves ──────────────────────────────────────────────────────────────────────
+// Cada nave define su color, escala (tamaño), radio de colisión y multiplicador
+// de puntos. La escala 1 corresponde a la nave clásica; la escala 2 es la nave
+// morada, el doble de grande y con el doble de puntos.
+const SHIPS = [
+  {
+    nombre: 'Clásica',
+    color: '#ffffff',
+    escala: 1,
+    radio: 12,
+    multiplicador: 1,
+  },
+  {
+    nombre: 'Nebulosa',
+    color: '#a855f7',
+    escala: 2,
+    radio: 24,
+    multiplicador: 2,
+  },
+];
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
-  constructor() { this.reset(); }
+  constructor(def) {
+    this.def = def;
+    this.reset();
+  }
 
   reset() {
     this.x      = W / 2;
@@ -128,7 +160,7 @@ class Ship {
     this.angle  = -Math.PI / 2;
     this.vx     = 0;
     this.vy     = 0;
-    this.radius = 12;
+    this.radius = this.def.radio;
     this.thrusting     = false;
     this.invincible    = 3;
     this.shootCooldown = 0;
@@ -162,10 +194,10 @@ class Ship {
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
     this.shootCooldown = 0.2;
-    const NOSE = 21;
+    const NOSE = 21 * this.def.escala;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
-    return [new Bullet(ox, oy, this.angle)];
+    return [new Bullet(ox, oy, this.angle, this.def.escala)];
   }
 
   draw() {
@@ -176,7 +208,8 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
+    ctx.scale(this.def.escala, this.def.escala);
+    ctx.strokeStyle = this.def.color;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
@@ -240,6 +273,15 @@ let ship, bullets, asteroids, particles;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
+let shipIndex = 0;  // nave seleccionada (índice de SHIPS)
+
+// Cambia la nave en caliente, conservando posición y velocidad.
+function selectShip(index) {
+  if (index === shipIndex || !SHIPS[index]) return;
+  shipIndex = index;
+  ship.def = SHIPS[shipIndex];
+  ship.radius = ship.def.radio;
+}
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -254,7 +296,7 @@ function spawnAsteroids(count) {
 }
 
 function initGame() {
-  ship          = new Ship();
+  ship          = new Ship(SHIPS[shipIndex]);
   bullets   = [];
   asteroids = [];
   particles = [];
@@ -291,6 +333,10 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  // Selección de nave: funciona en cualquier estado, incluso antes de empezar.
+  if (pressedAny(['Digit1', 'Numpad1'])) selectShip(0);
+  if (pressedAny(['Digit2', 'Numpad2'])) selectShip(1);
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
     particles.forEach(p => p.update(dt));
@@ -327,7 +373,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * ship.def.multiplicador;
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
       }
@@ -351,11 +397,11 @@ function update(dt) {
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────
-function drawLifeIcon(x, y) {
+function drawLifeIcon(x, y, color) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-Math.PI / 2);
-  ctx.strokeStyle = '#fff';
+  ctx.strokeStyle = color;
   ctx.lineWidth   = 1.2;
   ctx.lineJoin    = 'round';
   ctx.beginPath();
@@ -379,11 +425,20 @@ function drawHUD() {
   ctx.fillText(`NIVEL ${level}`, W / 2, 26);
 
   for (let i = 0; i < lives; i++)
-    drawLifeIcon(W - 16 - i * 22, 18);
+    drawLifeIcon(W - 16 - i * 22, 18, ship.def.color);
 
+  // Nave activa y su bonus de puntos
+  ctx.textAlign = 'left';
+  ctx.fillStyle = ship.def.color;
+  const bonus = ship.def.multiplicador > 1 ? `  x${ship.def.multiplicador} PUNTOS` : '';
+  ctx.fillText(`NAVE  ${ship.def.nombre.toUpperCase()}${bonus}`, 14, H - 34);
+
+  ctx.font = '13px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('[1] Clásica   [2] Nebulosa', 14, H - 14);
 }
 
-function drawOverlay(title, sub) {
+function drawOverlay(title, sub, hint) {
   ctx.textAlign   = 'center';
   ctx.fillStyle   = '#fff';
   ctx.font        = 'bold 46px monospace';
@@ -391,6 +446,11 @@ function drawOverlay(title, sub) {
   ctx.font        = '18px monospace';
   ctx.fillStyle   = 'rgba(255,255,255,0.65)';
   ctx.fillText(sub, W / 2, H / 2 + 22);
+  if (hint) {
+    ctx.font      = '14px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillText(hint, W / 2, H / 2 + 48);
+  }
 }
 
 function draw() {
@@ -405,7 +465,8 @@ function draw() {
   drawHUD();
 
   if (state === 'gameover')
-    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`);
+    drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`,
+                '[1] / [2] para cambiar de nave');
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────────
