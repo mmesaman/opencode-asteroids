@@ -4,7 +4,7 @@ Clon del clásico arcade **Asteroids** implementado en canvas HTML5 puro, sin de
 
 ## Descripción
 
-Nave espacial en un campo de asteroides con envolvimiento de bordes (el espacio es toroidal). Destruye asteroides para sumar puntos: los grandes se parten en medianos, los medianos en pequeños. Incluye power-ups especiales y tipos de asteroides únicos como la estrella fugaz.
+Nave espacial en un campo de asteroides con envolvimiento de bordes (el espacio es toroidal). Destruye asteroides para sumar puntos: los grandes se parten en medianos, los medianos en pequeños. Antes de empezar eliges una de las dos naves disponibles, cada una con su propio tamaño y su propio multiplicador de puntos.
 
 ## Tecnologías
 
@@ -30,6 +30,17 @@ Luego visita `http://localhost:3000`.
 | `↑`       | Propulsar  |
 | `Espacio` | Disparar   |
 
+En el menú de inicio: `←` `→` para elegir nave, `1` `2` para selección rápida y `Espacio` para empezar. Desde el *game over*, `M` vuelve al menú.
+
+## Naves
+
+| Nave       | Color  | Tamaño | Puntos |
+| ---------- | ------ | ------ | ------ |
+| Estándar   | Blanca | x1     | x1     |
+| Titán      | Morada | x2     | x2     |
+
+La nave **Titán** es morada y tiene el doble de tamaño que la estándar (mayor radio de colisión y de disparo), pero a cambio entrega el doble de puntos por cada asteroide destruido.
+
 ## Puntuación
 
 | Asteroide | Puntos |
@@ -38,8 +49,11 @@ Luego visita `http://localhost:3000`.
 | Mediano   | 50     |
 | Pequeño   | 100    |
 
+Los puntos se multiplican por el multiplicador de la nave activa (x2 con el Titán).
+
 ## Características
 
+- Selección de nave en el menú de inicio (2 naves con tamaño y multiplicador de puntos distintos)
 - 3 vidas con invencibilidad temporal al reaparecer (parpadeo)
 - Asteroides se parten en fragmentos más pequeños al ser destruidos
 - Partículas de explosión al destruir asteroides
