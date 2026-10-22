@@ -1,0 +1,193 @@
+name: issue-triage
+
+# Triage automático de issues: clasifica, etiqueta y agrega un bloque de
+# metadatos al final del cuerpo — sin tocar el texto original de la persona.
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Número del issue a re-triar'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Guardia: solo issues de personas reales y sin triage previo ────────────
+  guard:
+    name: Verificar issue
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    outputs:
+      triage: ${{ steps.check.outputs.triage }}
+    steps:
+      - id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- opencode-triage:start -->';
+            const issue = context.payload.issue;
+            let ok = true;
+            if (issue) {
+              ok = issue.user?.type === 'User' && !String(issue.body || '').includes(marker);
+            }
+            core.setOutput('triage', ok ? 'true' : 'false');
+            core.info(ok ? 'Triage habilitado' : 'Triage omitido (bot o issue ya triado)');
+
+  # ── Clasificación con el modelo (solo lectura) ────────────────────────────
+  classify:
+    name: Clasificar con OpenCode
+    needs: guard
+    if: needs.guard.outputs.triage == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Preparar contexto del issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            let issue = context.payload.issue;
+            if (!issue) {
+              const n = Number('${{ inputs.issue_number }}');
+              issue = (await github.rest.issues.get({ owner, repo, issue_number: n })).data;
+            }
+            fs.mkdirSync('.github/triage', { recursive: true });
+            fs.writeFileSync('.github/triage/issue-body.md', issue.body || '');
+            fs.writeFileSync('.github/triage/issue-meta.json', JSON.stringify({
+              number: issue.number,
+              title: issue.title || '',
+              author: issue.user?.login || '',
+              createdAt: issue.created_at || '',
+              sha: context.sha,
+            }, null, 2));
+
+      - name: Clasificar (OpenCode)
+        uses: anomalyco/opencode/github@latest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode/minimax-m3.1-flash-free
+          use_github_token: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Analizá el issue de este repositorio y escribí un único archivo:
+            `.github/triage/triage.json`.
+
+            El issue está en `.github/triage/issue-body.md` (cuerpo original, tal
+            cual lo escribió la persona) y su metadata en
+            `.github/triage/issue-meta.json` (número, título, autor).
+
+            Podés leer `game.js`, `index.html` y `README.md` para entender el
+            juego y adivinar qué archivo toca el problema.
+
+            REGLAS ESTRICTAS:
+            - Tu ÚNICA salida es el archivo `.github/triage/triage.json`.
+            - NO comentes en el issue, NO lo edites, NO abras PRs, NO crees ramas,
+              NO hagas commits, NO toques ningún otro archivo.
+            - NO reescribas el texto original del issue: eso lo hace otro paso.
+
+            El JSON debe tener exactamente esta forma:
+            {
+              "type": "bug" | "enhancement" | "documentation" | "question",
+              "summary": "una o dos frases sobre qué pide el issue",
+              "expected": "qué debería pasar, o cadena vacía si no se deduce",
+              "actual": "qué pasa realmente, o cadena vacía si no se deduce",
+              "steps": ["paso 1", "paso 2"],
+              "affectedFiles": ["game.js"],
+              "mode": "menú" | "partida" | "game over" | "general"
+            }
+
+            Criterios:
+            - `type`: "bug" si algo no funciona; "enhancement" si pide una
+              función nueva o una mejora; "documentation" si es sobre el
+              README o la documentación; "question" si pide información.
+            - `summary`: en español, una sola línea.
+            - `expected` / `actual`: en español. Dejalos vacíos si el issue no
+              los aporta o no se deducen del código.
+            - `steps`: en español, solo los pasos que se puedan deducir del
+              texto. Lista vacía si no hay forma de reproducirlos.
+            - `affectedFiles`: solo nombres de archivo existentes en el repo
+              (`game.js`, `index.html`, `README.md`, `favicon.svg`).
+            - `mode`: "menú", "partida", "game over" o "general".
+
+      - name: Subir propuesta de triage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: triage
+          path: .github/triage/triage.json
+          if-no-files-found: ignore
+
+  # ── Aplicar etiquetas y metadatos (escritura) ─────────────────────────────
+  apply:
+    name: Aplicar triage
+    needs: [guard, classify]
+    if: ${{ always() && needs.guard.outputs.triage == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Descargar propuesta de triage
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: triage
+          path: .github/triage
+
+      - name: Preparar datos del issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            let issue = context.payload.issue;
+            if (!issue) {
+              const n = Number('${{ inputs.issue_number }}');
+              issue = (await github.rest.issues.get({ owner, repo, issue_number: n })).data;
+            }
+            fs.mkdirSync('.github/triage', { recursive: true });
+            fs.writeFileSync('.github/triage/issue-body.md', issue.body || '');
+            fs.writeFileSync('.github/triage/issue-meta.json', JSON.stringify({
+              number: issue.number,
+              title: issue.title || '',
+              author: issue.user?.login || '',
+              createdAt: issue.created_at || '',
+              sha: context.sha,
+            }, null, 2));
+
+      - name: Aplicar etiquetas y metadatos
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node .github/scripts/apply-triage.mjs \
+            --body-file .github/triage/issue-body.md \
+            --meta-file .github/triage/issue-meta.json \
+            --json .github/triage/triage.json

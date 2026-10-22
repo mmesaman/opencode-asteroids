@@ -2,7 +2,7 @@
 
 ## What this is
 
-Static vanilla-JS game: `index.html`, `game.js` (all game logic, ~360 lines), `favicon.svg`, `README.md`. No `package.json`, no build, no dependencies, no tests, no lint, no CI, no workspace config.
+Static vanilla-JS game: `index.html`, `game.js` (all game logic, ~360 lines), `favicon.svg`, `README.md`. No `package.json`, no build, no dependencies, no tests, no lint, no workspace config. CI lives in `.github/workflows/` (nothing that runs on the game code itself).
 
 ## Run / verify
 
@@ -18,6 +18,12 @@ Static vanilla-JS game: `index.html`, `game.js` (all game logic, ~360 lines), `f
 - Input: `keys[code]` is held state; `pressed(code)` is one-shot and clears the flag on read, so at most one caller can consume a keypress per frame (`Space` restart and `Space` fire both use it).
 - `dt` is in seconds and clamped to 0.05 max; game speed is dt-based, so don't use per-frame constants for motion.
 - Restart is `pressed('Space') → initGame()` while `'gameover'`.
+
+## GitHub Actions
+
+- `.github/workflows/opencode.yml` — responde a `/oc` o `/opencode` en comentarios de issues/PRs.
+- `.github/workflows/issue-triage.yml` — al abrir un issue: lo clasifica con OpenCode, le pone la etiqueta de tipo (`bug` / `enhancement` / `documentation` / `question`) y **agrega un bloque de metadatos al final del cuerpo** (`<!-- opencode-triage:start -->` … `<!-- opencode-triage:end -->`). El texto que escribió la persona queda byte a byte intacto arriba del bloque; si el bloque ya existe, se reemplaza en vez de duplicarse.
+- `.github/scripts/apply-triage.mjs` — script Node sin dependencias que aplica las etiquetas y arma el bloque. Si el modelo falla, cae a heurísticas por palabras clave. Probálo local sin tocar GitHub con `--dry-run`.
 
 ## Language
 

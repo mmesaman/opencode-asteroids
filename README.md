@@ -57,3 +57,24 @@ Los puntos se multiplican por el multiplicador de la nave activa (x2 con el Tit�
 - 3 vidas con invencibilidad temporal al reaparecer (parpadeo)
 - Asteroides se parten en fragmentos más pequeños al ser destruidos
 - Partículas de explosión al destruir asteroides
+
+## Triage automático de issues
+
+La GitHub Action `.github/workflows/issue-triage.yml` se dispara cada vez que se
+abre un issue y hace tres cosas:
+
+1. **Clasifica** el issue (`bug`, `enhancement`, `documentation` o `question`)
+   usando OpenCode; si el modelo no está disponible, cae a reglas por palabras
+   clave.
+2. **Etiqueta** el issue con su tipo (crea la etiqueta si el repo todavía no la
+   tiene).
+3. **Agrega un bloque de metadatos al final del cuerpo** con un resumen, el
+   comportamiento esperado vs. el real, los pasos para reproducir, los archivos
+   probablemente afectados y un checklist para quien revisa.
+
+**El texto original queda intacto**: el bloque se agrega debajo, separado por un
+`---` y delimitado por comentarios HTML (`<!-- opencode-triage:start -->`).
+Si el issue ya tiene ese bloque, se reemplaza en vez de duplicarse.
+
+Para re-triar un issue a mano: **Actions → Issue Triage → Run workflow**, con el
+número del issue.
